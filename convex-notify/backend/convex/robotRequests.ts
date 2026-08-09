@@ -73,6 +73,19 @@ export const create = mutation({
   },
 });
 
+// Demo cleanup: wipe all requests and dispatch records. Internal-only, so it
+// is reachable from the CLI/dashboard but never from client API calls.
+export const clearAll = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const requests = await ctx.db.query("robotRequests").collect();
+    for (const doc of requests) await ctx.db.delete(doc._id);
+    const dispatches = await ctx.db.query("dispatches").collect();
+    for (const doc of dispatches) await ctx.db.delete(doc._id);
+    return { deletedRequests: requests.length, deletedDispatches: dispatches.length };
+  },
+});
+
 // One-time cleanup: lowercase IDs on rows written before normalization landed.
 export const normalizeLegacyIds = internalMutation({
   args: {},
