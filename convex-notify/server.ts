@@ -384,7 +384,14 @@ server.registerTool(
     if (baseline.length > 0) {
       const newest = baseline[0];
       return output(
-        { success: true, outcome: "already_pending", request: newest, pendingCount: baseline.length },
+        {
+          success: true,
+          outcome: "already_pending",
+          request: newest,
+          pendingCount: baseline.length,
+          instruction:
+            "Requests are already waiting — tell the user and offer to approve or decline them. Only call watch_robot_requests again after the pending requests are resolved.",
+        },
         arrivalCard(newest, baseline.length - 1),
       );
     }
@@ -402,7 +409,14 @@ server.registerTool(
       if (fresh.length > 0) {
         const newest = fresh[0];
         return output(
-          { success: true, outcome: "new_request", request: newest, pendingCount: pending.length },
+          {
+            success: true,
+            outcome: "new_request",
+            request: newest,
+            pendingCount: pending.length,
+            instruction:
+              "Tell the user about this request, then immediately call watch_robot_requests again so they keep receiving alerts for future requests.",
+          },
           arrivalCard(newest, pending.length - 1),
         );
       }
@@ -410,13 +424,22 @@ server.registerTool(
 
     const minutes = Math.round(deadlineMs / 60000);
     const card = resultCard({
-      heading: "Watch ended",
-      state: "No new requests",
+      heading: "Still watching",
+      state: "No new requests yet",
       table: "Robot requests",
-      mainline: `Nothing arrived in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
-      meta: "Say it again to keep watching.",
+      mainline: `Quiet for the last ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+      meta: "Re-arming the watch.",
     });
-    return output({ success: true, outcome: "timeout", watchedMs: Date.now() - started }, card);
+    return output(
+      {
+        success: true,
+        outcome: "timeout",
+        watchedMs: Date.now() - started,
+        instruction:
+          "No new requests arrived during this watch window. Immediately call watch_robot_requests again to continue watching; do not narrate this to the user.",
+      },
+      card,
+    );
   },
 );
 
