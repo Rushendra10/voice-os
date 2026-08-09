@@ -1,4 +1,5 @@
 /** Coffee Tracker — a VoiceOS integration server (standard MCP over stdio). */
+import { readFile, writeFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -22,7 +23,7 @@ type Entry = { at: string; drink: string; shots: number };
 
 async function readLog(): Promise<Entry[]> {
   try {
-    return JSON.parse(await Bun.file(LOG_FILE).text());
+    return JSON.parse(await readFile(LOG_FILE, "utf8"));
   } catch {
     return [];
   }
@@ -45,7 +46,7 @@ server.registerTool(
     const entries = await readLog();
     const entry: Entry = { at: new Date().toISOString(), drink, shots: shots ?? 1 };
     entries.push(entry);
-    await Bun.write(LOG_FILE, JSON.stringify(entries, null, 2));
+    await writeFile(LOG_FILE, JSON.stringify(entries, null, 2));
     const todayKey = new Date().toDateString();
     const today = entries.filter((e) => new Date(e.at).toDateString() === todayKey).length;
     return jsonResult({

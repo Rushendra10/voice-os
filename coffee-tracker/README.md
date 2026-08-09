@@ -19,7 +19,20 @@ bun add @modelcontextprotocol/sdk zod && bun verify.ts
 
 ## Install into VoiceOS
 
-**Settings → Agent Mode → Integrations → Install from folder**, then pick
-this folder. After edits, hit **Reload** on the integration.
+The docs describe **Settings → Agent Mode → Integrations → Install from
+folder**, but as of VoiceOS 0.1.21 that button isn't shipped yet. Install it
+as a custom MCP server instead:
+
+1. **Apps → Custom → Create** ("Tell VoiceOS what to build")
+2. Paste the launch command (the studio detects it as an MCP server):
+   ```
+   node /absolute/path/to/coffee-tracker/server.ts
+   ```
+   (`bun` isn't in the studio's allowed-binaries list; `server.ts` runs under
+   both node ≥ 23.6 and bun.)
+3. Send — VoiceOS connects and discovers both tools. Rename it via
+   **Edit** in the app's detail sheet, and flip on **Confirm custom actions**
+   so acting tools ask first. After edits to `server.ts`, toggle the app
+   off/on to restart the server.
 
 See `AGENTS.md` for the full integration contract.
