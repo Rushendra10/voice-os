@@ -467,7 +467,18 @@ async function startArrivalNotifier(): Promise<void> {
   }
   const pollMs = 5000;
   const seen = new Set<string>();
+  const outcomeSeen = new Map<string, RequestStatus>();
   let first = true;
+
+  const fetchOutgoing = async (): Promise<RobotRequest[]> => {
+    const cfg = setup();
+    const value = await convexCall("query", cfg.listPath, {
+      userId: cfg.userId,
+      direction: "outgoing",
+      limit: 20,
+    });
+    return listFrom(value).requests;
+  };
 
   const tick = async () => {
     let pending: RobotRequest[];
@@ -479,21 +490,38 @@ async function startArrivalNotifier(): Promise<void> {
     const fresh = pending.filter((r) => !seen.has(r.id));
     for (const r of pending) seen.add(r.id);
     if (first) {
-      first = false;
       if (pending.length > 0) {
         notifyMac(
           "Robot requests waiting",
           `${pending.length} request${pending.length === 1 ? "" : "s"} awaiting your approval. Ask VoiceOS: "any robot requests?"`,
         );
       }
-      return;
+    } else {
+      for (const r of fresh.slice(0, 3)) {
+        notifyMac(
+          "Robot request",
+          `${r.requesterId} wants to send ${r.robotLabel} to ${r.tableLabel}. Say: "approve the robot request".`,
+        );
+      }
     }
-    for (const r of fresh.slice(0, 3)) {
-      notifyMac(
-        "Robot request",
-        `${r.requesterId} wants to send ${r.robotLabel} to ${r.tableLabel}. Say: "approve the robot request".`,
-      );
+
+    // Requester side: alert when one of our own requests gets decided.
+    try {
+      const outgoing = await fetchOutgoing();
+      for (const r of outgoing) {
+        const previous = outcomeSeen.get(r.id);
+        outcomeSeen.set(r.id, r.status);
+        if (previous !== "pending" || r.status === "pending") continue;
+        const verb = r.status === "approved" ? "approved" : "declined";
+        notifyMac(
+          `Robot request ${verb}`,
+          `${r.recipientId} ${verb} your request — ${r.robotLabel} to ${r.tableLabel}.`,
+        );
+      }
+    } catch {
+      // outcome polling is best-effort; incoming alerts already succeeded
     }
+    first = false;
   };
 
   await tick();
