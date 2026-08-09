@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 import { ConvexClient } from "convex/browser";
@@ -108,6 +109,22 @@ function pendingCard(request: PendingRequest): string {
     "│ [Y] APPROVE HANDOFF                 [N] DECLINE                 │",
     "└────────────────────────────────────────────────────────────────┘",
   ].join("\n");
+}
+
+// Same recipient experience as the convex-notify template: a native macOS
+// notification with sound the moment a request arrives, so John notices even
+// when the terminal is not focused. RUNNER_NOTIFY=off disables it.
+function notifyArrival(request: PendingRequest): void {
+  if (process.platform !== "darwin" || process.env.RUNNER_NOTIFY === "off") return;
+  const body =
+    `${request.requester.displayName} wants to borrow the ${request.item.name}. ` +
+    "Press Y in the consent terminal to approve, N to decline.";
+  const script =
+    `display notification ${JSON.stringify(body)} ` +
+    `with title "RUNNER handoff request" sound name "Glass"`;
+  execFile("osascript", ["-e", script], () => {
+    // Notification failure is cosmetic; the terminal card is the consent surface.
+  });
 }
 
 function decisionLine(decision: Decision, replayed: boolean): string {
@@ -221,6 +238,7 @@ unsubscribe = client.onUpdate(
       lastArrivalMissionId = request.missionId;
       currentRequest = request;
       decisionView = null;
+      if (firstArrival) notifyArrival(request);
       redraw({ bell: firstArrival });
       return;
     }
