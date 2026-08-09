@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -337,6 +336,29 @@ async function fetchPendingIncoming(): Promise<RobotRequest[]> {
   return listFrom(value).requests;
 }
 
+async function fetchOutgoing(): Promise<RobotRequest[]> {
+  const cfg = setup();
+  const value = await convexCall("query", cfg.listPath, {
+    userId: cfg.userId,
+    direction: "outgoing",
+    limit: 20,
+  });
+  return listFrom(value).requests;
+}
+
+function outcomeCard(request: RobotRequest) {
+  const approved = request.status === "approved";
+  return resultCard({
+    heading: approved ? "Robot request approved" : "Robot request declined",
+    state: approved ? "On its way" : "Not this time",
+    table: request.tableLabel,
+    mainline: `${request.recipientId} ${approved ? "approved" : "declined"} your request · ${request.robotLabel}`,
+    note: request.note || undefined,
+    meta: "Watching for the next update.",
+    tone: approved ? "good" : "bad",
+  });
+}
+
 function arrivalCard(request: RobotRequest, alsoPending: number) {
   return resultCard({
     heading: "Robot request",
@@ -355,7 +377,7 @@ server.registerTool(
   {
     title: "Watch for robot requests",
     description:
-      "Wait in the background and alert the user when the next incoming robot request arrives, or immediately surface requests already waiting. Use when the user says to watch for robot requests, notify me when a robot arrives, or asks to be told about incoming requests.",
+      "Wait in the background and alert the user when the next incoming robot request arrives or when one of their own requests is approved or declined; immediately surfaces requests already waiting. Use when the user says to watch for robot requests, notify me when a robot arrives, or wants to hear when their request is decided.",
     inputSchema: {},
   },
   async () => {
@@ -366,8 +388,10 @@ server.registerTool(
     const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     let baseline: RobotRequest[];
+    let outgoingBaseline = new Map<string, RequestStatus>();
     try {
       baseline = await fetchPendingIncoming();
+      for (const r of await fetchOutgoing()) outgoingBaseline.set(r.id, r.status);
     } catch {
       const cfg = setup();
       const card = resultCard({
@@ -400,10 +424,29 @@ server.registerTool(
     while (Date.now() - started < deadlineMs) {
       await sleep(Math.min(4000, deadlineMs - (Date.now() - started)));
       let pending: RobotRequest[];
+      let outgoing: RobotRequest[];
       try {
         pending = await fetchPendingIncoming();
+        outgoing = await fetchOutgoing();
       } catch {
         continue; // transient poll failure — keep watching until the deadline
+      }
+      for (const r of outgoing) {
+        const previous = outgoingBaseline.get(r.id);
+        outgoingBaseline.set(r.id, r.status);
+        if (previous === "pending" && r.status !== "pending") {
+          return output(
+            {
+              success: true,
+              outcome: "request_decided",
+              request: r,
+              decision: r.status,
+              instruction:
+                "Tell the user their request was " + r.status + ", then immediately call watch_robot_requests again so they keep receiving alerts.",
+            },
+            outcomeCard(r),
+          );
+        }
       }
       const fresh = pending.filter((r) => !seen.has(r.id));
       if (fresh.length > 0) {
@@ -442,92 +485,5 @@ server.registerTool(
     );
   },
 );
-
-// ---------------------------------------------------------------------------
-// Automatic arrival notifications. This server process runs continuously while
-// the integration is enabled, so it can watch the shared deployment itself and
-// fire native macOS notifications — no extra script and no background-tool
-// invocation required. Approval still happens by voice through VoiceOS.
-// ---------------------------------------------------------------------------
-
-function notifyMac(title: string, body: string): void {
-  const script =
-    `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)} sound name "Glass"`;
-  execFile("osascript", ["-e", script], () => {
-    // Cosmetic only; the tools remain the source of truth.
-  });
-}
-
-async function startArrivalNotifier(): Promise<void> {
-  if (process.platform !== "darwin" || process.env.NOTIFY_ON_ARRIVAL === "off") return;
-  try {
-    setup();
-  } catch {
-    return; // not configured yet — nothing to watch
-  }
-  const pollMs = 5000;
-  const seen = new Set<string>();
-  const outcomeSeen = new Map<string, RequestStatus>();
-  let first = true;
-
-  const fetchOutgoing = async (): Promise<RobotRequest[]> => {
-    const cfg = setup();
-    const value = await convexCall("query", cfg.listPath, {
-      userId: cfg.userId,
-      direction: "outgoing",
-      limit: 20,
-    });
-    return listFrom(value).requests;
-  };
-
-  const tick = async () => {
-    let pending: RobotRequest[];
-    try {
-      pending = await fetchPendingIncoming();
-    } catch {
-      return; // transient network failure — try again next tick
-    }
-    const fresh = pending.filter((r) => !seen.has(r.id));
-    for (const r of pending) seen.add(r.id);
-    if (first) {
-      if (pending.length > 0) {
-        notifyMac(
-          "Robot requests waiting",
-          `${pending.length} request${pending.length === 1 ? "" : "s"} awaiting your approval. Ask VoiceOS: "any robot requests?"`,
-        );
-      }
-    } else {
-      for (const r of fresh.slice(0, 3)) {
-        notifyMac(
-          "Robot request",
-          `${r.requesterId} wants to send ${r.robotLabel} to ${r.tableLabel}. Say: "approve the robot request".`,
-        );
-      }
-    }
-
-    // Requester side: alert when one of our own requests gets decided.
-    try {
-      const outgoing = await fetchOutgoing();
-      for (const r of outgoing) {
-        const previous = outcomeSeen.get(r.id);
-        outcomeSeen.set(r.id, r.status);
-        if (previous !== "pending" || r.status === "pending") continue;
-        const verb = r.status === "approved" ? "approved" : "declined";
-        notifyMac(
-          `Robot request ${verb}`,
-          `${r.recipientId} ${verb} your request — ${r.robotLabel} to ${r.tableLabel}.`,
-        );
-      }
-    } catch {
-      // outcome polling is best-effort; incoming alerts already succeeded
-    }
-    first = false;
-  };
-
-  await tick();
-  setInterval(tick, pollMs);
-}
-
-void startArrivalNotifier();
 
 await server.connect(new StdioServerTransport());
