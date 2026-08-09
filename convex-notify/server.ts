@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -418,5 +419,64 @@ server.registerTool(
     return output({ success: true, outcome: "timeout", watchedMs: Date.now() - started }, card);
   },
 );
+
+// ---------------------------------------------------------------------------
+// Automatic arrival notifications. This server process runs continuously while
+// the integration is enabled, so it can watch the shared deployment itself and
+// fire native macOS notifications — no extra script and no background-tool
+// invocation required. Approval still happens by voice through VoiceOS.
+// ---------------------------------------------------------------------------
+
+function notifyMac(title: string, body: string): void {
+  const script =
+    `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)} sound name "Glass"`;
+  execFile("osascript", ["-e", script], () => {
+    // Cosmetic only; the tools remain the source of truth.
+  });
+}
+
+async function startArrivalNotifier(): Promise<void> {
+  if (process.platform !== "darwin" || process.env.NOTIFY_ON_ARRIVAL === "off") return;
+  try {
+    setup();
+  } catch {
+    return; // not configured yet — nothing to watch
+  }
+  const pollMs = 5000;
+  const seen = new Set<string>();
+  let first = true;
+
+  const tick = async () => {
+    let pending: RobotRequest[];
+    try {
+      pending = await fetchPendingIncoming();
+    } catch {
+      return; // transient network failure — try again next tick
+    }
+    const fresh = pending.filter((r) => !seen.has(r.id));
+    for (const r of pending) seen.add(r.id);
+    if (first) {
+      first = false;
+      if (pending.length > 0) {
+        notifyMac(
+          "Robot requests waiting",
+          `${pending.length} request${pending.length === 1 ? "" : "s"} awaiting your approval. Ask VoiceOS: "any robot requests?"`,
+        );
+      }
+      return;
+    }
+    for (const r of fresh.slice(0, 3)) {
+      notifyMac(
+        "Robot request",
+        `${r.requesterId} wants to send ${r.robotLabel} to ${r.tableLabel}. Say: "approve the robot request".`,
+      );
+    }
+  };
+
+  await tick();
+  setInterval(tick, pollMs);
+}
+
+void startArrivalNotifier();
 
 await server.connect(new StdioServerTransport());
