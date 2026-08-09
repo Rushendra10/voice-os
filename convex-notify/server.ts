@@ -325,4 +325,98 @@ server.registerTool(
   },
 );
 
+async function fetchPendingIncoming(): Promise<RobotRequest[]> {
+  const cfg = setup();
+  const value = await convexCall("query", cfg.listPath, {
+    userId: cfg.userId,
+    direction: "incoming",
+    status: "pending",
+    limit: 20,
+  });
+  return listFrom(value).requests;
+}
+
+function arrivalCard(request: RobotRequest, alsoPending: number) {
+  return resultCard({
+    heading: "Robot request",
+    state: "Awaiting your approval",
+    table: request.tableLabel,
+    mainline: `${request.requesterId} → you · ${request.robotLabel}`,
+    note: request.note || undefined,
+    meta: alsoPending > 0
+      ? `+${alsoPending} more waiting · Say: approve the robot request`
+      : "Say: approve the robot request",
+  });
+}
+
+server.registerTool(
+  "watch_robot_requests",
+  {
+    title: "Watch for robot requests",
+    description:
+      "Wait in the background and alert the user when the next incoming robot request arrives, or immediately surface requests already waiting. Use when the user says to watch for robot requests, notify me when a robot arrives, or asks to be told about incoming requests.",
+    inputSchema: {},
+  },
+  async () => {
+    const started = Date.now();
+    const configured = Number(process.env.WATCH_TIMEOUT_SECONDS);
+    const deadlineMs =
+      1000 * Math.min(Math.max(Number.isFinite(configured) ? configured : 480, 30), 900);
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    let baseline: RobotRequest[];
+    try {
+      baseline = await fetchPendingIncoming();
+    } catch {
+      const cfg = setup();
+      const card = resultCard({
+        heading: "Watch failed",
+        state: "Couldn’t reach Convex",
+        table: "Robot requests",
+        mainline: "The watch could not start.",
+        meta: pathHint(cfg.listPath),
+        tone: "bad",
+      });
+      return output({ success: false, outcome: "error", error: "Couldn't reach Convex" }, card);
+    }
+
+    if (baseline.length > 0) {
+      const newest = baseline[0];
+      return output(
+        { success: true, outcome: "already_pending", request: newest, pendingCount: baseline.length },
+        arrivalCard(newest, baseline.length - 1),
+      );
+    }
+
+    const seen = new Set(baseline.map((r) => r.id));
+    while (Date.now() - started < deadlineMs) {
+      await sleep(Math.min(4000, deadlineMs - (Date.now() - started)));
+      let pending: RobotRequest[];
+      try {
+        pending = await fetchPendingIncoming();
+      } catch {
+        continue; // transient poll failure — keep watching until the deadline
+      }
+      const fresh = pending.filter((r) => !seen.has(r.id));
+      if (fresh.length > 0) {
+        const newest = fresh[0];
+        return output(
+          { success: true, outcome: "new_request", request: newest, pendingCount: pending.length },
+          arrivalCard(newest, pending.length - 1),
+        );
+      }
+    }
+
+    const minutes = Math.round(deadlineMs / 60000);
+    const card = resultCard({
+      heading: "Watch ended",
+      state: "No new requests",
+      table: "Robot requests",
+      mainline: `Nothing arrived in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+      meta: "Say it again to keep watching.",
+    });
+    return output({ success: true, outcome: "timeout", watchedMs: Date.now() - started }, card);
+  },
+);
+
 await server.connect(new StdioServerTransport());

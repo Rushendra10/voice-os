@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "com.voiceos.generated.convex-notify-template",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Convex Notify",
   "summary": "A Convex template for robot requests that notify recipients, await approval, and trigger backend dispatch.",
   "description": "An editable request-and-approval template for a shared Convex deployment. A sender creates a pending robot request for another VoiceOS user; the recipient reviews it and approves or declines. Your Convex respond mutation should atomically validate the recipient and request status, store the decision, and trigger robot dispatch only on approval.",
@@ -27,6 +27,12 @@
       "domains": [
         "*.convex.cloud"
       ]
+    },
+    {
+      "kind": "background"
+    },
+    {
+      "kind": "notify"
     }
   ],
   "preferences": [
@@ -217,6 +223,19 @@
           "robotLabel",
           "requesterId"
         ]
+      }
+    },
+    {
+      "name": "watch_robot_requests",
+      "title": "Watch for robot requests",
+      "description": "Wait in the background and alert the user when the next incoming robot request arrives, or immediately surface requests already waiting. Use when the user says to watch for robot requests, notify me when a robot arrives, or asks to be told about incoming requests.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "execution": {
+        "mode": "background",
+        "estimatedDurationMs": 60000
       }
     }
   ]
