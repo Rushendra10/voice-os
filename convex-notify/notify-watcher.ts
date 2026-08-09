@@ -61,7 +61,34 @@ function notify(request: RobotRequest) {
   console.log(`[${new Date().toLocaleTimeString()}] ${body}`);
 }
 
+async function fetchOutgoing(): Promise<Array<RobotRequest & { recipientId: string; status: string }>> {
+  const response = await fetch(`${new URL(deploymentUrl!).origin}/api/query`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      path: listPath,
+      args: { userId, direction: "outgoing", limit: 20 },
+      format: "json",
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
+  const json = (await json_(response)) as { status?: string; value?: { requests?: Array<RobotRequest & { recipientId: string; status: string }> } } | null;
+  if (!response.ok || json?.status !== "success") {
+    throw new Error(`Convex query failed with HTTP ${response.status}`);
+  }
+  return json.value?.requests ?? [];
+}
+
+function notifyRaw(title: string, body: string) {
+  const script = `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)} sound name "Glass"`;
+  execFile("osascript", ["-e", script], (err) => {
+    if (err) console.error("notification failed:", err.message);
+  });
+  console.log(`[${new Date().toLocaleTimeString()}] ${title}: ${body}`);
+}
+
 const seen = new Set<string>();
+const outcomeSeen = new Map<string, string>();
 let first = true;
 
 async function tick() {
@@ -73,7 +100,21 @@ async function tick() {
       if (!first) notify(request);
     }
     if (first && pending.length) {
-      console.log(`${pending.length} pending request(s) already waiting — say "any robot requests?" in VoiceOS.`);
+      notifyRaw(
+        "Robot requests waiting",
+        `${pending.length} request${pending.length === 1 ? "" : "s"} awaiting your approval. Ask VoiceOS: "any robot requests?"`,
+      );
+    }
+    const outgoing = await fetchOutgoing();
+    for (const request of outgoing) {
+      const previous = outcomeSeen.get(request._id);
+      outcomeSeen.set(request._id, request.status);
+      if (previous !== "pending" || request.status === "pending") continue;
+      const verb = request.status === "approved" ? "approved" : "declined";
+      notifyRaw(
+        `Robot request ${verb}`,
+        `${request.recipientId} ${verb} your request — ${request.robotLabel} to ${request.tableLabel}.`,
+      );
     }
     first = false;
   } catch (error) {
