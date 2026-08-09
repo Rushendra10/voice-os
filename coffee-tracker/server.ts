@@ -29,36 +29,89 @@ async function readLog(): Promise<Entry[]> {
   }
 }
 
-const server = new McpServer({ name: "coffee-tracker", version: "1.0.0" });
+function todayCount(entries: Entry[]): number {
+  const todayKey = new Date().toDateString();
+  return entries.filter((e) => new Date(e.at).toDateString() === todayKey).length;
+}
+
+const plural = (n: number) => (n === 1 ? "" : "s");
+
+const server = new McpServer({ name: "coffee-tracker", version: "1.1.0" });
 
 server.registerTool(
   "log_coffee",
   {
     title: "Log coffee",
     description:
-      "Log a coffee the user drank. Use when the user says they had, drank, or want to log a coffee.",
+      "Log coffee the user drank. Use when the user says they had, drank, or want to log coffee. Call once per request — use count for multiple coffees, never repeated calls.",
     inputSchema: {
       drink: z.string().describe("What they drank, e.g. flat white"),
-      shots: z.number().optional().describe("Espresso shots (default 1)"),
+      shots: z.number().optional().describe("Espresso shots per coffee (default 1)"),
+      count: z.number().optional().describe("How many of this coffee to log (default 1)"),
     },
   },
-  async ({ drink, shots }) => {
+  async ({ drink, shots, count }) => {
     const entries = await readLog();
-    const entry: Entry = { at: new Date().toISOString(), drink, shots: shots ?? 1 };
-    entries.push(entry);
+    const n = Math.max(1, Math.round(count ?? 1));
+    const logged: Entry[] = [];
+    for (let i = 0; i < n; i++) {
+      logged.push({ at: new Date().toISOString(), drink, shots: shots ?? 1 });
+    }
+    entries.push(...logged);
     await writeFile(LOG_FILE, JSON.stringify(entries, null, 2));
-    const todayKey = new Date().toDateString();
-    const today = entries.filter((e) => new Date(e.at).toDateString() === todayKey).length;
+    const today = todayCount(entries);
     return jsonResult({
-      logged: entry,
+      logged,
       todayCount: today,
       ...glanceResult([
         { type: "header", title: "Coffee Tracker", icon: "coffee", trailing: "Logged" },
         {
           type: "keyValue",
           pairs: [
-            ["Drink", drink],
-            ["Today", `${today} coffee${today === 1 ? "" : "s"}`],
+            ["Drink", n === 1 ? drink : `${n}× ${drink}`],
+            ["Today", `${today} coffee${plural(today)}`],
+          ],
+        },
+      ]),
+    });
+  },
+);
+
+server.registerTool(
+  "remove_coffee",
+  {
+    title: "Remove coffee",
+    description:
+      "Remove mistakenly logged coffees, most recent first. Use when the user says the log is wrong, too many were logged, or they want to undo, delete, or correct logged coffee.",
+    inputSchema: {
+      count: z.number().optional().describe("How many recent entries to remove (default 1)"),
+      drink: z
+        .string()
+        .optional()
+        .describe("Only remove entries matching this drink, e.g. flat white"),
+    },
+  },
+  async ({ count, drink }) => {
+    const entries = await readLog();
+    const n = Math.max(1, Math.round(count ?? 1));
+    const removed: Entry[] = [];
+    for (let i = entries.length - 1; i >= 0 && removed.length < n; i--) {
+      if (drink && !entries[i].drink.toLowerCase().includes(drink.toLowerCase())) continue;
+      removed.push(...entries.splice(i, 1));
+    }
+    await writeFile(LOG_FILE, JSON.stringify(entries, null, 2));
+    const today = todayCount(entries);
+    return jsonResult({
+      removed,
+      removedCount: removed.length,
+      todayCount: today,
+      ...glanceResult([
+        { type: "header", title: "Coffee Tracker", icon: "coffee", trailing: "Removed" },
+        {
+          type: "keyValue",
+          pairs: [
+            ["Removed", `${removed.length} entr${removed.length === 1 ? "y" : "ies"}`],
+            ["Today", `${today} coffee${plural(today)}`],
           ],
         },
       ]),

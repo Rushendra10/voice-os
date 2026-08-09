@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "com.you.coffee-tracker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Coffee Tracker",
   "summary": "Log every coffee by voice and glance your habits in the notch.",
   "publisher": { "id": "pub_you", "name": "You" },
@@ -10,12 +10,13 @@
     {
       "name": "log_coffee",
       "title": "Log coffee",
-      "description": "Log a coffee the user drank. Use when the user says they had, drank, or want to log a coffee.",
+      "description": "Log coffee the user drank. Use when the user says they had, drank, or want to log coffee. Call once per request — use count for multiple coffees, never repeated calls.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "drink": { "type": "string", "description": "What they drank, e.g. flat white" },
-          "shots": { "type": "number", "description": "Espresso shots (default 1)" }
+          "shots": { "type": "number", "description": "Espresso shots per coffee (default 1)" },
+          "count": { "type": "number", "description": "How many of this coffee to log (default 1)" }
         },
         "required": ["drink"]
       },
@@ -25,7 +26,8 @@
           "type": "card",
           "title": "Log coffee",
           "children": [
-            { "type": "textField", "bind": "{{drink}}", "label": "Drink" }
+            { "type": "textField", "bind": "{{drink}}", "label": "Drink" },
+            { "type": "textField", "bind": "{{count}}", "label": "How many" }
           ],
           "footer": [
             {
@@ -33,6 +35,38 @@
               "items": [
                 { "label": "Cancel", "role": "cancel" },
                 { "label": "Log it", "role": "confirm", "color": "accent" }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "remove_coffee",
+      "title": "Remove coffee",
+      "description": "Remove mistakenly logged coffees, most recent first. Use when the user says the log is wrong, too many were logged, or they want to undo, delete, or correct logged coffee.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "count": { "type": "number", "description": "How many recent entries to remove (default 1)" },
+          "drink": { "type": "string", "description": "Only remove entries matching this drink, e.g. flat white" }
+        }
+      },
+      "confirmation": {
+        "schemaVersion": 1,
+        "root": {
+          "type": "card",
+          "title": "Remove coffee",
+          "children": [
+            { "type": "textField", "bind": "{{count}}", "label": "How many to remove" },
+            { "type": "textField", "bind": "{{drink}}", "label": "Only this drink (optional)" }
+          ],
+          "footer": [
+            {
+              "type": "actions",
+              "items": [
+                { "label": "Cancel", "role": "cancel" },
+                { "label": "Remove", "role": "confirm", "color": "accent" }
               ]
             }
           ]

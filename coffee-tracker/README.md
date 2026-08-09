@@ -5,7 +5,8 @@ A VoiceOS integration template, built by hand following
 
 Say **"log a flat white"** and VoiceOS records it after a confirmation card;
 ask **"how's my coffee habit?"** and the notch shows a stats card with a
-weekly chart. Two tools, native UI, no VoiceOS internals.
+weekly chart; say **"that's wrong, remove two"** and it corrects the log.
+Three tools, native UI, no VoiceOS internals.
 
 ## Prerequisite
 
