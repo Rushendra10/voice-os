@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "description": "Development-only sample inputs used by bun verify.ts and the VoiceOS Integration Studio preview.",
+  "tools": {
+    "log_coffee": { "args": { "drink": "flat white" }, "expectedGlanceBlocks": 2 },
+    "coffee_stats": { "args": {}, "expectedGlanceBlocks": 3 }
+  }
+}

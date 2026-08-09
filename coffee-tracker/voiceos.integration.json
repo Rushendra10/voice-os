@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "com.you.coffee-tracker",
+  "version": "1.0.0",
+  "name": "Coffee Tracker",
+  "summary": "Log every coffee by voice and glance your habits in the notch.",
+  "publisher": { "id": "pub_you", "name": "You" },
+  "runtime": { "kind": "local-mcp", "command": "bun", "args": ["server.ts"] },
+  "tools": [
+    {
+      "name": "log_coffee",
+      "title": "Log coffee",
+      "description": "Log a coffee the user drank. Use when the user says they had, drank, or want to log a coffee.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "drink": { "type": "string", "description": "What they drank, e.g. flat white" },
+          "shots": { "type": "number", "description": "Espresso shots (default 1)" }
+        },
+        "required": ["drink"]
+      },
+      "confirmation": {
+        "schemaVersion": 1,
+        "root": {
+          "type": "card",
+          "title": "Log coffee",
+          "children": [
+            { "type": "textField", "bind": "{{drink}}", "label": "Drink" }
+          ],
+          "footer": [
+            {
+              "type": "actions",
+              "items": [
+                { "label": "Cancel", "role": "cancel" },
+                { "label": "Log it", "role": "confirm", "color": "accent" }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "coffee_stats",
+      "title": "Coffee stats",
+      "description": "Show how much coffee the user has been drinking. Use when the user asks about their coffee habits, count, or stats.",
+      "inputSchema": { "type": "object", "properties": {} }
+    }
+  ]
+}
