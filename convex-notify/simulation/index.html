@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="en" data-k-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VoiceOS — Robot Delivery Simulation</title>
+<style>
+:root{
+  /* the VoiceOS card palette, lifted from widgetKit */
+  --ink-1:rgba(255,255,255,.95); --ink-2:rgba(255,255,255,.72);
+  --ink-3:rgba(255,255,255,.5);  --ink-4:rgba(255,255,255,.42);
+  --line:rgba(255,255,255,.08);  --fill-1:rgba(255,255,255,.06);
+  --fill-2:rgba(255,255,255,.1); --track:rgba(255,255,255,.12);
+  --good:#30d158; --bad:#ff453a; --accent:#EE342F;   /* convex-notify accent */
+  --k-radius:26px;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{
+  margin:0; background:#08080a; color:var(--ink-1); font-family:var(--sans);
+  display:flex; flex-direction:column; align-items:center; gap:14px;
+  padding:18px 16px 26px; -webkit-font-smoothing:antialiased;
+}
+
+/* ─────────── VoiceOS panel ─────────── */
+.vo{ width:min(980px,100%); flex:none; }
+.hud, .legend{ flex:none }
+.vo-bar{
+  display:flex; align-items:center; gap:9px; padding:0 4px 9px;
+  font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); font-weight:600;
+}
+.vo-bar .dot{ width:6px;height:6px;border-radius:50%;background:var(--ink-4); flex:none; transition:background .25s, box-shadow .25s; }
+.vo-bar.live .dot{ background:var(--accent); box-shadow:0 0 9px var(--accent); }
+.vo-bar .who{ margin-left:auto; text-transform:none; letter-spacing:0; color:var(--ink-4); font-weight:400; font-size:11px; }
+
+.vo-stage{ position:relative; min-height:96px; }
+.card{
+  border:1px solid var(--line); border-radius:var(--k-radius);
+  background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012));
+  padding:13px 15px 14px; overflow:hidden;
+  opacity:0; transform:translateY(-8px) scale(.985); transform-origin:top center;
+  transition:opacity .32s ease, transform .32s cubic-bezier(.2,.8,.3,1);
+}
+.card.on{ opacity:1; transform:none; }
+.card::before{
+  content:""; position:absolute; inset:0 0 auto 0; height:78px; pointer-events:none;
+  background:radial-gradient(120% 90% at 12% 0%, color-mix(in srgb, var(--accent) 17%, transparent), transparent 70%);
+}
+.k-hd{ display:flex; align-items:center; gap:7px; position:relative; }
+.k-mk{ width:15px;height:15px;border-radius:4px;background:var(--accent); flex:none; display:grid; place-items:center; }
+.k-mk i{ width:7px;height:7px;border-radius:1.5px;background:#0b0b0d; display:block; }
+.k-hd-t{ font-size:11px;font-weight:640;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-1); }
+.k-hd-scope{ min-width:0;flex:1;font-size:10.5px;color:var(--ink-4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.k-hd-tr{ font-size:10.5px;color:var(--ink-4);white-space:nowrap;flex:none }
+
+.k-state{ display:flex; align-items:center; gap:6px; margin-top:11px; }
+.k-state i{ width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none }
+.k-state.good i{ background:var(--good) } .k-state.bad i{ background:var(--bad) }
+.k-state b{ font-size:10.5px;font-weight:660;letter-spacing:.07em;text-transform:uppercase;color:var(--accent) }
+.k-state.good b{ color:var(--good) } .k-state.bad b{ color:var(--bad) }
+
+.k-title{ font-size:21px; font-weight:660; letter-spacing:-.015em; margin-top:7px; }
+.k-line{ font-size:12.5px; color:var(--ink-2); margin-top:3px; }
+.k-note{ font-size:11.5px; color:var(--ink-3); margin-top:9px; padding-top:9px; border-top:1px solid var(--line); }
+.k-meta{ font-family:var(--mono); font-size:10px; color:var(--ink-4); margin-top:6px; }
+
+.k-rows{ margin-top:10px }
+.k-row{ display:flex; align-items:flex-start; gap:9px; padding:8px 0; border-top:1px solid var(--line) }
+.k-row i{ width:7px;height:7px;border-radius:50%;margin-top:5px;flex:none;background:var(--track) }
+.k-row.pending i{ background:var(--accent) }
+.k-row.approved i{ background:var(--good) }
+.k-row.declined i{ background:transparent;border:1px solid var(--bad) }
+.k-row .t{ flex:1;min-width:0 }
+.k-row .t b{ font-size:12.5px;font-weight:620;display:block }
+.k-row .t span{ font-size:11px;color:var(--ink-3) }
+.k-row .s{ font-size:9.5px;font-weight:680;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);flex:none;text-align:right }
+.k-row.approved .s{ color:var(--good) } .k-row.declined .s{ color:var(--bad) }
+.k-row .s em{ display:block;font-style:normal;font-weight:400;letter-spacing:0;font-size:10px;color:var(--ink-4);margin-top:2px }
+
+/* ─────────── the game ─────────── */
+.screen{
+  position:relative; width:min(980px,100%); flex:none;   /* never let flex squash the canvas */
+  border:1px solid rgba(255,255,255,.14); border-radius:14px; overflow:hidden;
+  background:#0a0a0c; box-shadow:0 24px 70px rgba(0,0,0,.6);
+}
+canvas{ display:block; width:100%; height:auto; image-rendering:pixelated; image-rendering:crisp-edges; }
+.scan{ position:absolute; inset:0; pointer-events:none;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px); opacity:.5 }
+.vig{ position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(120% 90% at 50% 45%, transparent 52%, rgba(0,0,0,.55)) }
+
+/* ─────────── HUD ─────────── */
+.hud{
+  width:min(980px,100%); display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3);
+}
+.stat{ display:flex; align-items:baseline; gap:7px; padding:8px 13px; border:1px solid var(--line); border-radius:10px; background:var(--fill-1) }
+.stat b{ font-size:19px; font-weight:700; color:var(--ink-1); letter-spacing:-.02em; font-variant-numeric:tabular-nums }
+.stat.hi b{ color:var(--accent) }
+.hud .spacer{ flex:1 }
+button{
+  font:inherit; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2);
+  background:var(--fill-1); border:1px solid var(--line); border-radius:9px;
+  padding:9px 15px; cursor:pointer; transition:color .18s,border-color .18s,background .18s;
+}
+button:hover{ color:var(--ink-1); border-color:var(--accent) }
+button.on{ color:#0b0b0d; background:var(--accent); border-color:var(--accent); font-weight:700 }
+.legend{ width:min(980px,100%); font-size:11px; color:var(--ink-4); line-height:1.6 }
+.legend b{ color:var(--ink-2); font-weight:600 }
+</style>
+</head>
+<body>
+
+<!-- ══════════ VoiceOS ══════════ -->
+<section class="vo">
+  <div class="vo-bar" id="voBar"><span class="dot"></span><span>VoiceOS</span><span class="who" id="voWho">standing by</span></div>
+  <div class="vo-stage"><div class="card" id="voCard"></div></div>
+</section>
+
+<!-- ══════════ the floor ══════════ -->
+<div class="screen">
+  <canvas id="c" width="320" height="180"></canvas>
+  <div class="scan"></div><div class="vig"></div>
+</div>
+
+<!-- ══════════ HUD ══════════ -->
+<div class="hud">
+  <div class="stat hi"><b id="sDelivered">0</b><span>items delivered</span></div>
+  <div class="stat"><b id="sRuns">0</b><span>runs</span></div>
+  <div class="stat"><b id="sTable">—</b><span>destination</span></div>
+  <div class="spacer"></div>
+  <button id="bPause">Pause</button>
+  <button id="bSpeed">1×</button>
+  <button id="bSend">Send a robot</button>
+</div>
+<p class="legend">
+  <b>The run.</b> A request is spoken into VoiceOS, the recipient's laptop is notified, the table approves by voice or their
+  agent approves for them, and the robot leaves the store room, climbs to the floor it needs, sets the tray down and returns to dock.
+  Every card above is the same card language the convex-notify integration renders.
+</p>
+
+<script>
+'use strict';
+/* ══════════════════════════════════════════════════════════════════
+   THE FLOOR — a 16-bit delivery sim.
+   World is 5 screens wide and 2 storeys tall; the camera follows the
+   robot and pans up when it takes the lift.
+   ══════════════════════════════════════════════════════════════════ */
+const C = document.getElementById('c'), X = C.getContext('2d');
+X.imageSmoothingEnabled = false;
+const VW = 320, VH = 180;                 // viewport, in world pixels
+const WW = 1600, WH = 350;                // world size
+// Two standing lines, 130 apart, so either storey frames the robot identically.
+const UPPER_Y = 150, FLOOR_Y = 280;
+const CAM_LOW = 130, CAM_HIGH = 0;        // camera y for each storey
+
+/* ── palette ── */
+const P = {
+  night:'#0b0d14', wall:'#1b2030', wall2:'#232a3d', trim:'#2f3850',
+  floor:'#3a3350', floorHi:'#463d60', board:'#2a2438',
+  store:'#161a26', crate:'#6b4a2f', crateHi:'#8a613d', crateDk:'#4a3320',
+  shelf:'#3c3244', metal:'#5a6478', metalHi:'#7d879e',
+  glass:'#2b4a63', glassHi:'#4d7fa3', warm:'#ffb45e', warmDim:'#7a5533',
+  red:'#EE342F', green:'#30d158', blue:'#3987e5', white:'#f2f3f7',
+  skin:[ '#e8b48c','#c78a5e','#8d5a3b','#f0c9a6' ],
+  shirt:[ '#4d7fa3','#a34d6b','#4da37f','#8a7bb8','#b8935a','#5f6fa8' ],
+  tableTop:'#7a5a3c', tableDk:'#523c28',
+  robot:'#c9d2e4', robotDk:'#8b95ab', robotSh:'#5d6578', visor:'#39f0ff',
+};
+
+/* ── rooms, left to right ── */
+const ROOMS = [
+  { x:0,    w:340, name:'STORE ROOM',   kind:'store' },
+  { x:340,  w:260, name:'SERVICE HALL', kind:'hall'  },
+  { x:600,  w:420, name:'MAIN ROOM',    kind:'main'  },
+  { x:1020, w:200, name:'THE LIFT',     kind:'lift'  },
+  { x:1220, w:380, name:'MEZZANINE',    kind:'upper' },
+];
+const LIFT_X = 1110;                       // shaft centre
+
+/* ── tables: three below, three above ── */
+const TABLES = [
+  { id:1, x:700,  y:FLOOR_Y, label:'Table 4',  who:'rush',  mode:'person' },
+  { id:2, x:820,  y:FLOOR_Y, label:'Table 9',  who:'aaron', mode:'agent'  },
+  { id:3, x:950,  y:FLOOR_Y, label:'Table 12', who:'shiva', mode:'person' },
+  { id:4, x:1300, y:UPPER_Y, label:'Table 21', who:'rush',  mode:'agent'  },
+  { id:5, x:1420, y:UPPER_Y, label:'Table 24', who:'mira',  mode:'person' },
+  { id:6, x:1530, y:UPPER_Y, label:'Table 27', who:'dev',   mode:'agent'  },
+];
+TABLES.forEach((t,i)=>{ t.skin=P.skin[i%P.skin.length]; t.shirt=P.shirt[i%P.shirt.length]; t.thanks=0; t.served=0; });
+
+const DOCK = { x:90, y:FLOOR_Y };
+
+/* ── the robot ── */
+const R = {
+  x:DOCK.x, y:FLOOR_Y, vx:0, dir:1, state:'idle', t:0,
+  items:0, tray:[], led:P.blue, bob:0, target:null, lift:0,
+};
+
+/* ── run bookkeeping ── */
+let delivered = 0, runs = 0, paused = false, speed = 1, queue = [], active = null;
+let cameraX = 0, cameraY = CAM_LOW, shake = 0;
+const bubbles = [];   // floating speech
+const sparks = [];    // little confetti on delivery
+
+/* ══════════ VoiceOS cards ══════════ */
+const voCard = document.getElementById('voCard'), voBar = document.getElementById('voBar'), voWho = document.getElementById('voWho');
+let voTimer = null;
+function shortId(n){ return 'k' + n.toString(36).padStart(6,'0') + 'f2h9q3m1x8b4c'.slice(0,8); }
+
+function showCard(html, who){
+  clearTimeout(voTimer);
+  voCard.classList.remove('on');
+  voTimer = setTimeout(()=>{
+    voCard.innerHTML = html;
+    voCard.classList.add('on');
+    voBar.classList.add('live');
+    voWho.textContent = who || '';
+  }, 150);
+}
+function hd(title, scope, right){
+  return `<div class="k-hd"><span class="k-mk"><i></i></span><span class="k-hd-t">${title}</span>`
+       + `<span class="k-hd-scope">${scope||''}</span><span class="k-hd-tr">${right||'now'}</span></div>`;
+}
+function cardRequest(t, id){
+  showCard(hd('Approval requested', `to ${t.who}`) +
+    `<div class="k-state"><i></i><b>Waiting on ${t.who}</b></div>
+     <div class="k-title">${t.label}</div>
+     <div class="k-line">Robot is queued for the table</div>
+     <div class="k-note">two coffees and a pastry</div>
+     <div class="k-meta">${t.who} · ${id}</div>`, 'sender · shiva');
+}
+function cardPending(t, id){
+  showCard(hd('Robot requests', `incoming for ${t.who}`, '1') +
+    `<div class="k-rows"><div class="k-row pending"><i></i>
+      <div class="t"><b>${t.label}</b><span>Robot · shiva → ${t.who}</span></div>
+      <div class="s">Pending<em>now</em></div></div></div>`, `${t.who}'s laptop · notified`);
+}
+function cardApproved(t, id){
+  const byAgent = t.mode === 'agent';
+  showCard(hd('Robot approved', byAgent ? `agent for ${t.who}` : `${t.who} · by voice`) +
+    `<div class="k-state good"><i></i><b>Dispatch authorized</b></div>
+     <div class="k-title">${t.label}</div>
+     <div class="k-line">Robot may now come to the table</div>
+     <div class="k-note">${byAgent ? `${t.who}'s agent approved on their behalf` : `"${pick(['approve it','yes, send it over','approve the robot request'])}"`}</div>
+     <div class="k-meta">shiva · ${id}</div>`, byAgent ? `agent · ${t.who}` : `${t.who} · voice`);
+}
+function cardDelivered(t, id, n){
+  showCard(hd('Delivery complete', `${t.label} · ${t.who}`) +
+    `<div class="k-state good"><i></i><b>Dispatch closed</b></div>
+     <div class="k-title">${n} item${n===1?'':'s'} delivered</div>
+     <div class="k-line">Robot is returning to the store room</div>
+     <div class="k-note">${t.mode==='agent' ? 'Logged by agent · no interruption' : `"${pick(['thank you','thanks!','appreciate it'])}"`}</div>
+     <div class="k-meta">${delivered} delivered · ${runs} run${runs===1?'':'s'}</div>`, t.mode==='agent' ? `agent · ${t.who}` : `${t.who} · voice`);
+}
+function cardIdle(){
+  voBar.classList.remove('live');
+  showCard(hd('Robot requests', 'incoming') +
+    `<div class="k-state"><i></i><b>No matching requests</b></div>
+     <div class="k-title">Nothing waiting</div>
+     <div class="k-line">The robot is docked in the store room</div>
+     <div class="k-meta">${delivered} delivered · ${runs} run${runs===1?'':'s'}</div>`, 'standing by');
+}
+const pick = a => a[(Math.random()*a.length)|0];
+
+/* ══════════ pixel helpers ══════════ */
+function px(x,y,w,h,c){ X.fillStyle=c; X.fillRect(Math.round(x),Math.round(y),Math.ceil(w),Math.ceil(h)); }
+function txt(s,x,y,c,size){ X.fillStyle=c; X.font=`${size||6}px "SF Mono",Menlo,monospace`; X.textBaseline='top'; X.fillText(s,Math.round(x),Math.round(y)); }
+
+/* ══════════ world drawing ══════════ */
+function drawBackdrop(){
+  // night behind the glass
+  px(0,0,WW,WH,P.night);
+  for(const r of ROOMS){
+    const isUp = r.kind==='upper';
+    px(r.x, isUp?0:0, r.w, WH, r.kind==='store'?P.store:P.wall);
+  }
+  // ── upper storey band, and the slab it stands on ──
+  px(600, 0, WW-600, UPPER_Y+18, P.wall2);
+  px(600, UPPER_Y+18, WW-600, 6, P.trim);            // mezzanine slab
+  px(600, UPPER_Y+24, WW-600, 2, 'rgba(0,0,0,.35)');
+  // wall panelling
+  for(let x=340;x<WW;x+=24){ px(x, 0, 1, WH, 'rgba(255,255,255,.022)'); }
+  // the tall glass wall of the main room lives between the slab and the floor
+  // windows in the main room
+  for(let i=0;i<4;i++){
+    const wx = 640 + i*90, wy = UPPER_Y + 40;
+    px(wx, wy, 54, 62, P.glass); px(wx+2, wy+2, 50, 58, P.glassHi);
+    px(wx+2, wy+2, 50, 58, 'rgba(11,13,20,.5)');
+    px(wx+25, wy, 2, 62, P.trim); px(wx-2, wy-3, 58, 3, P.trim);
+    if(i===1){ px(wx+30, wy+12, 6, 6, '#dfe6ff'); }
+  }
+  // pendant lights over the main room
+  for(let i=0;i<5;i++){
+    const lx = 640 + i*80, ly = UPPER_Y + 30;
+    px(lx, UPPER_Y+24, 1, ly-UPPER_Y-24+18, P.trim);
+    px(lx-5, ly+18, 11, 4, P.metal); px(lx-4, ly+22, 9, 2, P.warm);
+    const g = X.createRadialGradient(lx, ly+28, 2, lx, ly+28, 54);
+    g.addColorStop(0,'rgba(255,180,94,.22)'); g.addColorStop(1,'rgba(255,180,94,0)');
+    X.fillStyle=g; X.fillRect(lx-54, ly+22, 108, 74);
+  }
+}
+function drawStoreRoom(){
+  const r = ROOMS[0];
+  // shelving
+  for(let s=0;s<3;s++){
+    const sy = FLOOR_Y - 106 + s*34;
+    px(r.x+16, sy, 190, 4, P.shelf);
+    for(let i=0;i<7;i++){
+      const cx = r.x+22 + i*26, hgt = 16 + ((i+s)%3)*3;
+      px(cx, sy-hgt, 20, hgt, (i+s)%2 ? P.crate : P.crateDk);
+      px(cx, sy-hgt, 20, 2, P.crateHi);
+      px(cx+8, sy-hgt+4, 4, 4, P.crateHi);
+    }
+  }
+  px(r.x+12, FLOOR_Y-112, 4, 118, P.metal); px(r.x+206, FLOOR_Y-112, 4, 118, P.metal);
+  // dock pad
+  px(DOCK.x-16, FLOOR_Y+2, 32, 4, P.metal);
+  px(DOCK.x-13, FLOOR_Y+3, 26, 2, R.state==='idle' ? P.green : P.metalHi);
+  txt('DOCK', DOCK.x-11, FLOOR_Y+9, '#5a6478', 5);
+  // hatch to the hall
+  px(300, FLOOR_Y-70, 3, 76, P.trim);
+}
+function drawFloorsAndTables(){
+  // ground floor slab
+  px(0, FLOOR_Y+6, WW, WH-FLOOR_Y, P.floor);
+  px(0, FLOOR_Y+6, WW, 2, P.floorHi);
+  for(let x=0;x<WW;x+=16) px(x, FLOOR_Y+6, 1, 24, 'rgba(0,0,0,.13)');
+  // mezzanine floor
+  px(600, UPPER_Y+6, WW-600, 12, P.floor);
+  px(600, UPPER_Y+6, WW-600, 2, P.floorHi);
+  // railing along the mezzanine
+  for(let x=1240;x<WW-10;x+=12){ px(x, UPPER_Y+6, 2, 14, P.metal); }
+  px(1240, UPPER_Y+4, WW-1250, 3, P.metalHi);
+}
+function drawTable(t){
+  const y = t.y;
+  // table
+  px(t.x-16, y-14, 32, 4, P.tableTop);
+  px(t.x-14, y-10, 28, 2, P.tableDk);
+  px(t.x-2, y-10, 4, 16, P.tableDk);
+  px(t.x-9, y+4, 18, 2, P.tableDk);
+  // seated person
+  const sitY = y-26, breathe = Math.sin(gt/520 + t.id)*0.6;
+  px(t.x+13, sitY+10+breathe, 10, 14, t.shirt);            // body
+  px(t.x+14, sitY+3+breathe, 8, 8, t.skin);                // head
+  px(t.x+14, sitY+2+breathe, 8, 3, '#2b2030');             // hair
+  px(t.x+12, sitY+14+breathe, 3, 6, t.skin);               // arm to table
+  px(t.x+11, y-4, 12, 4, P.tableDk);                       // chair
+  // agent laptop, for the tables whose agent answers
+  if(t.mode==='agent'){
+    const lit = (active && active.table===t && ['approved','arriving','serving','thanks'].includes(active.phase));
+    px(t.x-13, y-20, 12, 8, P.metalHi);
+    px(t.x-12, y-19, 10, 6, lit ? P.red : '#1c2334');
+    px(t.x-14, y-12, 14, 2, P.metal);
+    if(lit && (gt/220|0)%2===0) px(t.x-11, y-18, 8, 1, P.white);
+  }
+  // items already delivered, stacked on the table
+  for(let i=0;i<Math.min(t.served,4);i++){
+    px(t.x-12+i*6, y-18, 4, 4, i%2 ? P.white : P.warm);
+    px(t.x-12+i*6, y-19, 4, 1, P.warmDim);
+  }
+  // label
+  txt(t.label.toUpperCase(), t.x-15, y+9, 'rgba(255,255,255,.30)', 5);
+}
+function drawLift(){
+  px(LIFT_X-22, 0, 44, FLOOR_Y+6, '#12161f');
+  px(LIFT_X-22, 0, 2, FLOOR_Y+6, P.trim); px(LIFT_X+20, 0, 2, FLOOR_Y+6, P.trim);
+  for(let y=UPPER_Y-40;y<FLOOR_Y;y+=14) px(LIFT_X-19, y, 38, 1, 'rgba(255,255,255,.045)');
+  // cab
+  const cabY = R.state==='lifting' ? R.y : (R.y<=UPPER_Y+4 ? UPPER_Y : FLOOR_Y);
+  px(LIFT_X-19, cabY-34, 38, 40, '#1a2130');
+  px(LIFT_X-19, cabY-34, 38, 2, P.metalHi);
+  px(LIFT_X-19, cabY+4, 38, 2, P.metalHi);
+  px(LIFT_X-1, cabY-34, 2, 40, 'rgba(255,255,255,.06)');
+  txt('LIFT', LIFT_X-9, UPPER_Y-24, 'rgba(255,255,255,.25)', 5);
+}
+function drawRoomSigns(){
+  for(const r of ROOMS){
+    const sy = r.kind==='upper' ? UPPER_Y-30 : FLOOR_Y-128;
+    txt(r.name, r.x+10, sy, 'rgba(255,255,255,.13)', 6);
+  }
+}
+
+
+function drawHallDressing(){
+  const r = ROOMS[1], top = FLOOR_Y - 118;
+  // pipework along the ceiling
+  px(r.x, top, r.w, 4, P.metal);
+  px(r.x, top, r.w, 1, P.metalHi);
+  for(let x=r.x+14;x<r.x+r.w;x+=38){ px(x, top+4, 3, 7, P.metal); px(x-2, top+9, 7, 3, P.metalDk||P.robotSh); }
+  px(r.x, top+16, r.w, 2, P.trim);
+  // a service door
+  px(r.x+150, FLOOR_Y-62, 34, 62, '#141a26');
+  px(r.x+150, FLOOR_Y-62, 34, 2, P.trim);
+  px(r.x+178, FLOOR_Y-34, 3, 3, P.metalHi);
+  px(r.x+154, FLOOR_Y-58, 26, 14, '#1d2534');
+  // wall lamps
+  for(let i=0;i<2;i++){
+    const lx = r.x+60 + i*130;
+    px(lx-4, FLOOR_Y-86, 9, 3, P.metal); px(lx-3, FLOOR_Y-83, 7, 2, P.warm);
+    const g = X.createRadialGradient(lx, FLOOR_Y-80, 2, lx, FLOOR_Y-80, 34);
+    g.addColorStop(0,'rgba(255,180,94,.14)'); g.addColorStop(1,'rgba(255,180,94,0)');
+    X.fillStyle=g; X.fillRect(lx-34, FLOOR_Y-84, 68, 56);
+  }
+  // hazard stripe where the hall meets the floor
+  for(let x=r.x;x<r.x+r.w;x+=10){ px(x, FLOOR_Y+2, 5, 2, 'rgba(255,180,94,.20)'); }
+}
+
+function drawUpperDressing(){
+  // ceiling and its lights
+  px(600, 0, WW-600, 6, P.trim);
+  for(let i=0;i<7;i++){
+    const lx = 1270 + i*46;
+    if(lx > WW-20) break;
+    px(lx, 6, 1, 12, P.trim); px(lx-6, 18, 13, 4, P.metal); px(lx-5, 22, 11, 2, P.warm);
+    const g = X.createRadialGradient(lx, 28, 2, lx, 28, 40);
+    g.addColorStop(0,'rgba(255,180,94,.16)'); g.addColorStop(1,'rgba(255,180,94,0)');
+    X.fillStyle=g; X.fillRect(lx-40, 22, 80, 60);
+  }
+  // framed pictures along the mezzanine wall
+  const art = [[1268,'#3d647f'],[1352,'#7f3d53'],[1462,'#3d7f62'],[1556,'#8a6f45']];
+  for(const [ax,c] of art){
+    px(ax, UPPER_Y-84, 22, 17, P.trim);
+    px(ax+2, UPPER_Y-82, 18, 13, c);
+    px(ax+2, UPPER_Y-82, 18, 4, 'rgba(255,255,255,.10)');
+    px(ax+2, UPPER_Y-82, 18, 13, 'rgba(11,13,20,.28)');
+  }
+  // a planter, because rooms need one
+  px(1240, UPPER_Y-16, 10, 16, P.crateDk);
+  px(1238, UPPER_Y-18, 14, 3, P.crate);
+  for(let i=0;i<5;i++) px(1240+i*2, UPPER_Y-24-((i%3)*3), 2, 8, '#3f7a55');
+  // the balcony edge, so the storey reads as a balcony
+  px(600, UPPER_Y+18, WW-600, 3, P.metalHi);
+}
+
+/* ══════════ the robot ══════════ */
+function drawRobot(){
+  const x = Math.round(R.x), y = Math.round(R.y);
+  const b = Math.round(Math.sin(R.bob)*1);
+  const d = R.dir;
+  // shadow
+  px(x-9, y+4, 18, 2, 'rgba(0,0,0,.35)');
+  // treads
+  const roll = (R.x*0.6|0)%4;
+  px(x-10, y-6, 20, 10, P.robotSh);
+  px(x-10, y-6, 20, 2, P.robotDk);
+  for(let i=0;i<5;i++) px(x-9+((i*4+roll)%18), y-3, 2, 5, '#3c4354');
+  // body
+  px(x-8, y-20+b, 16, 15, P.robot);
+  px(x-8, y-20+b, 16, 2, '#eef2fb');
+  px(x-8, y-8+b, 16, 2, P.robotDk);
+  px(x+ (d>0?4:-6), y-17+b, 2, 8, P.robotDk);            // seam, faces travel
+  // chest light
+  px(x-2, y-16+b, 4, 4, R.led);
+  px(x-1, y-15+b, 2, 2, '#ffffff');
+  // head
+  px(x-6, y-29+b, 12, 9, P.robot);
+  px(x-6, y-29+b, 12, 2, '#eef2fb');
+  px(x-5+(d>0?1:0), y-27+b, 10, 5, '#141a27');           // visor recess
+  px(x-4+(d>0?1:0), y-26+b, 8, 3, P.visor);
+  const blink = (gt%3400) < 120 ? 0 : 1;
+  if(blink){ px(x-3+(d>0?1:0)+ (d>0?2:0), y-26+b, 2, 3, '#ffffff'); }
+  // antenna
+  px(x-1, y-33+b, 2, 4, P.robotDk);
+  px(x-2, y-36+b, 4, 3, R.led);
+  // tray with items
+  const ty = y-22+b;
+  px(x-11, ty, 22, 2, P.metalHi);
+  px(x-11, ty+2, 22, 1, P.metal);
+  for(let i=0;i<R.tray.length;i++){
+    const ix = x-9 + i*6, it = R.tray[i];
+    if(it==='cup'){ px(ix, ty-6, 5, 6, P.white); px(ix, ty-7, 5, 1, P.warm); px(ix+5, ty-4, 1, 2, P.white); }
+    else { px(ix, ty-4, 5, 4, P.warm); px(ix, ty-5, 5, 1, P.white); }
+  }
+}
+
+/* ══════════ effects ══════════ */
+function say(x, y, text, tone){
+  bubbles.push({ x, y, text, tone:tone||P.white, life:0, max:150 });
+}
+function drawBubbles(dt){
+  for(let i=bubbles.length-1;i>=0;i--){
+    const b = bubbles[i]; b.life += dt;
+    if(b.life > b.max){ bubbles.splice(i,1); continue; }
+    const k = b.life/b.max, rise = k*10, a = k<.15 ? k/.15 : k>.8 ? (1-k)/.2 : 1;
+    X.globalAlpha = a;
+    const w = b.text.length*4 + 8;
+    px(b.x-w/2, b.y-rise-10, w, 11, 'rgba(10,12,18,.92)');
+    px(b.x-w/2, b.y-rise-10, w, 1, b.tone);
+    px(b.x-2, b.y-rise+1, 3, 3, 'rgba(10,12,18,.92)');
+    txt(b.text, b.x-w/2+4, b.y-rise-7, b.tone, 6);
+    X.globalAlpha = 1;
+  }
+}
+function burst(x,y,c){ for(let i=0;i<12;i++) sparks.push({x,y,vx:(Math.random()-.5)*1.6,vy:-Math.random()*1.4-.3,life:0,max:60+Math.random()*40,c}); }
+function drawSparks(dt){
+  for(let i=sparks.length-1;i>=0;i--){
+    const s=sparks[i]; s.life+=dt; if(s.life>s.max){ sparks.splice(i,1); continue; }
+    s.x+=s.vx*dt/16; s.y+=s.vy*dt/16; s.vy+=0.035*dt/16;
+    X.globalAlpha = 1-s.life/s.max; px(s.x,s.y,2,2,s.c); X.globalAlpha=1;
+  }
+}
+
+/* ══════════ the run ══════════ */
+function beginRun(table){
+  const t = table || TABLES[(Math.random()*TABLES.length)|0];
+  const n = 2 + ((Math.random()*3)|0);
+  active = { table:t, phase:'requested', n, id:shortId(runs*7919+13), t:0 };
+  runs++; document.getElementById('sRuns').textContent = runs;
+  document.getElementById('sTable').textContent = t.label.replace('Table ','T');
+  cardRequest(t, active.id);
+  R.led = P.blue;
+}
+function phaseAfter(ms, next){ if(active && active.t > ms){ active.t = 0; active.phase = next; return true; } return false; }
+
+function updateRun(dt){
+  if(!active){
+    if(R.state==='idle'){ R.t += dt; if(R.t > 1400){ R.t=0; beginRun(); } }
+    return;
+  }
+  active.t += dt;
+  const t = active.table;
+
+  switch(active.phase){
+    case 'requested':
+      if(phaseAfter(1500,'notified')) cardPending(t, active.id);
+      break;
+    case 'notified':
+      if(phaseAfter(1700,'approving')){
+        if(t.mode==='person'){ say(t.x+18, t.y-32, pick(['approve it','yes — send it']), P.green); }
+        R.led = P.warm;
+      }
+      break;
+    case 'approving':
+      if(phaseAfter(1200,'loading')){
+        cardApproved(t, active.id);
+        burst(t.x+18, t.y-30, P.green);
+      }
+      break;
+    case 'loading':
+      if(R.tray.length < active.n && active.t > 260){ active.t = 0; R.tray.push(Math.random()<.6?'cup':'plate'); }
+      if(R.tray.length >= active.n && active.t > 500){ active.phase='travel'; R.state='travel'; R.led=P.red; }
+      break;
+    case 'travel':
+      if(driveTo(t.x - 22, t.y, dt)){ active.phase='serving'; active.t=0; R.state='serving'; R.led=P.green; }
+      break;
+    case 'serving':
+      if(R.tray.length && active.t > 300){
+        active.t = 0; R.tray.pop(); t.served++; delivered++;
+        document.getElementById('sDelivered').textContent = delivered;
+        burst(t.x-6, t.y-20, P.warm);
+      }
+      if(!R.tray.length && active.t > 420){
+        active.phase='thanks'; active.t=0;
+        if(t.mode==='person') say(t.x+18, t.y-32, pick(['thank you!','thanks!','lovely']), P.warm);
+        else say(t.x-8, t.y-26, 'agent · logged', P.red);
+        cardDelivered(t, active.id, active.n);
+      }
+      break;
+    case 'thanks':
+      if(phaseAfter(1500,'home')){ R.state='travel'; R.led=P.blue; }
+      break;
+    case 'home':
+      if(driveTo(DOCK.x, DOCK.y, dt)){
+        R.state='idle'; R.led=P.green; active=null; R.t=0;
+        document.getElementById('sTable').textContent='—';
+        cardIdle();
+      }
+      break;
+  }
+}
+
+/* drive toward a point, taking the lift when the storey differs */
+function driveTo(tx, ty, dt){
+  const sp = 0.145 * dt * speed;                 // ~145 px/s across the floor
+  const needUp = Math.abs(ty - R.y) > 1.2;
+
+  if(needUp){
+    // get to the shaft first, then ride
+    if(Math.abs(R.x - LIFT_X) > 1.2 && R.state !== 'lifting'){
+      R.dir = R.x < LIFT_X ? 1 : -1; R.x += R.dir * sp; R.bob += dt/90; return false;
+    }
+    R.x = LIFT_X; R.state = 'lifting';
+    const d = ty - R.y; R.y += Math.sign(d) * Math.min(Math.abs(d), 0.105*dt*speed);
+    if(Math.abs(ty - R.y) <= 1.2){ R.y = ty; R.state='travel'; }   // snap flush to the floor line
+    return false;
+  }
+  if(Math.abs(tx - R.x) <= 1.2){ R.x = tx; R.vx = 0; return true; }
+  R.dir = R.x < tx ? 1 : -1;
+  R.x += R.dir * sp;
+  R.bob += dt/90;
+  return false;
+}
+
+/* ══════════ camera + loop ══════════ */
+function updateCamera(dt){
+  const tx = Math.max(0, Math.min(WW-VW, R.x - VW/2));
+  const ty = R.y > (UPPER_Y + 60) ? CAM_LOW : CAM_HIGH;
+  cameraX += (tx - cameraX) * Math.min(1, dt/170);
+  cameraY += (ty - cameraY) * Math.min(1, dt/230);
+}
+let gt = 0, last = performance.now();
+function frame(now){
+  let dt = Math.min(48, now - last); last = now;
+  if(!paused){
+    gt += dt;
+    updateRun(dt * speed);
+    updateCamera(dt);
+  }
+  X.setTransform(1,0,0,1,0,0);
+  X.clearRect(0,0,VW,VH);
+  X.save();
+  X.translate(-Math.round(cameraX), -Math.round(cameraY));
+  drawBackdrop();
+  drawStoreRoom();
+  drawFloorsAndTables();
+  drawHallDressing();
+  drawUpperDressing();
+  drawLift();
+  drawRoomSigns();
+  for(const t of TABLES) drawTable(t);
+  drawRobot();
+  drawSparks(paused?0:dt);
+  drawBubbles(paused?0:dt);
+  X.restore();
+  requestAnimationFrame(frame);
+}
+
+/* ══════════ controls ══════════ */
+document.getElementById('bPause').onclick = e => {
+  paused = !paused; e.target.textContent = paused ? 'Play' : 'Pause'; e.target.classList.toggle('on', paused);
+};
+document.getElementById('bSpeed').onclick = e => {
+  speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; e.target.textContent = speed + '×'; e.target.classList.toggle('on', speed>1);
+};
+document.getElementById('bSend').onclick = () => { if(!active && R.state==='idle'){ R.t=0; beginRun(); } };
+addEventListener('keydown', e => {
+  if(e.key === ' '){ e.preventDefault(); document.getElementById('bPause').click(); }
+  if(e.key.toLowerCase() === 's') document.getElementById('bSend').click();
+});
+
+cardIdle();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
