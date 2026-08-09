@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 1,
+  "id": "com.voiceos.generated.convex-notify-template",
+  "version": "1.1.0",
+  "name": "Convex Notify",
+  "summary": "A Convex template for robot requests that notify recipients, await approval, and trigger backend dispatch.",
+  "description": "An editable request-and-approval template for a shared Convex deployment. A sender creates a pending robot request for another VoiceOS user; the recipient reviews it and approves or declines. Your Convex respond mutation should atomically validate the recipient and request status, store the decision, and trigger robot dispatch only on approval.",
+  "icon": "icon.png",
+  "categories": [
+    "Developer Tools",
+    "Productivity"
+  ],
+  "publisher": {
+    "id": "pub_user",
+    "name": "Made in VoiceOS"
+  },
+  "runtime": {
+    "kind": "local-mcp",
+    "command": "/bin/zsh",
+    "args": [
+      "run.sh"
+    ]
+  },
+  "permissions": [
+    {
+      "kind": "network",
+      "domains": [
+        "*.convex.cloud"
+      ]
+    }
+  ],
+  "preferences": [
+    {
+      "name": "CONVEX_DEPLOYMENT_URL",
+      "title": "Deployment URL",
+      "description": "Convex Dashboard -> Deployment Settings. Copy the deployment URL ending in .convex.cloud.",
+      "type": "text",
+      "required": true,
+      "placeholder": "https://your-deployment.convex.cloud"
+    },
+    {
+      "name": "VOICEOS_USER_ID",
+      "title": "VoiceOS user ID",
+      "description": "Enter the stable user ID your Convex schema uses for the current VoiceOS user.",
+      "type": "text",
+      "required": true,
+      "placeholder": "user_123"
+    },
+    {
+      "name": "CONVEX_ACCESS_KEY",
+      "title": "Access key",
+      "description": "Optional. Convex Dashboard -> Deployment Settings -> API Keys / Deploy Keys; leave blank when your functions use another public authentication flow.",
+      "type": "password",
+      "required": false
+    },
+    {
+      "name": "CONVEX_LIST_REQUESTS_PATH",
+      "title": "List requests path",
+      "description": "Set this to your public query's module and export name.",
+      "type": "text",
+      "default": "robotRequests:list",
+      "placeholder": "robotRequests:list"
+    },
+    {
+      "name": "CONVEX_GET_REQUEST_PATH",
+      "title": "Get request path",
+      "description": "Set this to your single-request query's module and export name.",
+      "type": "text",
+      "default": "robotRequests:get",
+      "placeholder": "robotRequests:get"
+    },
+    {
+      "name": "CONVEX_CREATE_REQUEST_PATH",
+      "title": "Create request path",
+      "description": "Set this to the mutation that creates a pending robot request.",
+      "type": "text",
+      "default": "robotRequests:create",
+      "placeholder": "robotRequests:create"
+    },
+    {
+      "name": "CONVEX_RESPOND_REQUEST_PATH",
+      "title": "Respond request path",
+      "description": "Set this to the mutation that records approval or decline and dispatches only after valid approval.",
+      "type": "text",
+      "default": "robotRequests:respond",
+      "placeholder": "robotRequests:respond"
+    }
+  ],
+  "tools": [
+    {
+      "name": "list_robot_requests",
+      "title": "List robot requests",
+      "description": "List incoming or outgoing robot requests in Convex. Use when the user asks what robot visits are waiting for approval, what they requested, or the status of recent robot requests.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "incoming",
+              "outgoing"
+            ],
+            "description": "Incoming requests for this user or outgoing requests sent by this user; default incoming"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "declined"
+            ],
+            "description": "Optional status filter"
+          },
+          "limit": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "Maximum requests to fetch; the card displays up to four"
+          }
+        }
+      }
+    },
+    {
+      "name": "get_robot_request",
+      "title": "Get robot request",
+      "description": "Fetch one robot request by its Convex document ID. Use when the user asks for the details of a specific request or before asking them to approve or decline it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "description": "Exact Convex robot-request document ID"
+          }
+        },
+        "required": [
+          "requestId"
+        ]
+      }
+    },
+    {
+      "name": "request_robot",
+      "title": "Request robot",
+      "description": "Create a pending Convex request asking another VoiceOS user to approve a robot visit to their table. Use when the user asks to send or bring a robot to a recipient; approval and physical dispatch happen later through the recipient's response and backend automation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "recipientId": {
+            "type": "string",
+            "description": "Exact VoiceOS ID of the person who must approve"
+          },
+          "tableLabel": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Human-readable destination table, such as Table 12"
+          },
+          "robotLabel": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Robot name or identifier; defaults to Robot"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Optional reason or message shown to the recipient"
+          }
+        },
+        "required": [
+          "recipientId",
+          "tableLabel"
+        ]
+      }
+    },
+    {
+      "name": "respond_robot_request",
+      "title": "Respond to robot request",
+      "description": "Approve or decline a pending robot request addressed to the current VoiceOS user. Use only after fetching the request details; approving writes the decision to Convex so the user's backend can dispatch the robot atomically.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "description": "Exact pending Convex request ID"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "declined"
+            ],
+            "description": "Recipient's explicit decision"
+          },
+          "tableLabel": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Fetched destination shown for verification; backend should verify it against the request"
+          },
+          "robotLabel": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Fetched robot shown for verification; backend should verify it against the request"
+          },
+          "requesterId": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "Fetched requester shown for verification; backend should verify it against the request"
+          },
+          "responseNote": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Optional response to store with the decision"
+          }
+        },
+        "required": [
+          "requestId",
+          "decision",
+          "tableLabel",
+          "robotLabel",
+          "requesterId"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "originalPrompt": "create something simple that I can use as a template. I want to modify the code myself. I will add a convex database that'll be used to push notifications between voiceos users.",
+  "preview": {
+    "utterances": [
+      "Send a robot to Maya's table",
+      "What robot requests are waiting for me?",
+      "Approve the robot for Table 12"
+    ],
+    "toolPreviews": [
+      {
+        "tool": "list_robot_requests",
+        "sampleArgs": {
+          "direction": "incoming",
+          "status": "pending",
+          "limit": 10
+        },
+        "stressCases": [
+          {
+            "state": "empty",
+            "sampleArgs": {
+              "direction": "incoming",
+              "status": "pending",
+              "limit": 10
+            },
+            "sampleData": {
+              "status": "success",
+              "value": {
+                "requests": [],
+                "total": 0
+              }
+            },
+            "expected": "A compact Convex-branded empty state names the incoming pending scope without drawing placeholder rows."
+          }
+        ]
+      },
+      {
+        "tool": "get_robot_request",
+        "sampleArgs": {
+          "requestId": "jd7robotrequest123"
+        },
+        "stressCases": [
+          {
+            "state": "long-text",
+            "sampleArgs": {
+              "requestId": "jd7robotrequest123"
+            },
+            "sampleData": {
+              "status": "success",
+              "value": {
+                "_id": "jd7robotrequest123",
+                "requesterId": "user_requester_with_an_exceptionally_long_identifier_that_must_ellipsize_cleanly",
+                "recipientId": "user_456",
+                "tableLabel": "Terrace table twelve beside the north window with a destination label that is intentionally much longer than one hundred characters",
+                "robotLabel": "Service Robot Atlas",
+                "note": "Please approve this robot visit to bring the prototype materials over. This deliberately long note continues beyond one hundred characters to prove the detail view clamps cleanly without displacing status or routing metadata.",
+                "status": "pending",
+                "_creationTime": 1739500000000
+              }
+            },
+            "expected": "The destination remains the focal element, long route labels ellipsize, and the note clamps to two lines above a quiet request ID."
+          }
+        ]
+      },
+      {
+        "tool": "request_robot",
+        "sampleArgs": {
+          "recipientId": "user_456",
+          "tableLabel": "Table 12",
+          "robotLabel": "Atlas",
+          "note": "Bringing the prototype materials."
+        },
+        "stressCases": [
+          {
+            "state": "long-text",
+            "sampleArgs": {
+              "recipientId": "user_with_a_very_long_identifier_that_should_remain_editable_987654321",
+              "tableLabel": "Terrace table twelve beside the north window with an intentionally long destination label",
+              "robotLabel": "Service Robot Atlas with extended equipment module",
+              "note": "Please approve this robot visit to bring the prototype materials over. This deliberately long note continues beyond one hundred characters to prove the editable confirmation stays compact while preserving the complete pending value."
+            },
+            "sampleData": {
+              "status": "success",
+              "value": {
+                "requestId": "robot_request_987654321",
+                "status": "pending",
+                "recipientId": "user_with_a_very_long_identifier_that_should_remain_editable_987654321",
+                "tableLabel": "Terrace table twelve beside the north window with an intentionally long destination label that now exceeds one hundred characters for stress validation",
+                "note": "Please approve this robot visit to bring the prototype materials over. This deliberately long note continues beyond one hundred characters to prove the editable confirmation stays compact while preserving the complete pending value."
+              }
+            },
+            "expected": "All pending request arguments remain editable; single-line fields ellipsize visually and the note is constrained above a clear approval-request consequence."
+          }
+        ]
+      },
+      {
+        "tool": "respond_robot_request",
+        "sampleArgs": {
+          "requestId": "jd7robotrequest123",
+          "decision": "approved",
+          "tableLabel": "Table 12",
+          "robotLabel": "Atlas",
+          "requesterId": "user_123",
+          "responseNote": "Approved — come over now."
+        },
+        "stressCases": [
+          {
+            "state": "long-text",
+            "sampleArgs": {
+              "requestId": "jd7robotrequest123_with_a_long_suffix_987654321",
+              "decision": "approved",
+              "tableLabel": "Terrace table twelve beside the north window with a long destination label",
+              "robotLabel": "Service Robot Atlas with extended equipment module",
+              "requesterId": "user_requester_with_an_exceptionally_long_identifier_that_must_stay_visible",
+              "responseNote": "Approved for arrival after the current service clears. This intentionally long response continues beyond one hundred characters to verify the editable decision card stays compact and keeps the dispatch consequence unmistakable."
+            },
+            "sampleData": {
+              "status": "success",
+              "value": {
+                "updated": true,
+                "status": "approved",
+                "dispatchQueued": true,
+                "tableLabel": "Terrace table twelve beside the north window with a destination description that is intentionally longer than one hundred characters for the renderer",
+                "responseNote": "Approved for arrival after the current service clears. This intentionally long response continues beyond one hundred characters to verify the editable decision card stays compact and keeps the dispatch consequence unmistakable."
+              }
+            },
+            "expected": "The recipient can verify and edit the decision and request details, while the bottom-right stays clear for VoiceOS's approval control."
+          }
+        ]
+      }
+    ]
+  },
+  "updatedAt": "2026-08-09T19:42:09.808Z"
+}

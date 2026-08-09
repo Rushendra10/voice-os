@@ -1,0 +1,12 @@
+{
+  "name": "convex-notify-template",
+  "version": "1.0.0",
+  "private": true,
+  "description": "An editable Convex template for robot requests that notify a recipient, await approval, and trigger backend dispatch.",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "zod": "^3.24.0",
+    "tsx": "^4.20.2"
+  }
+}

@@ -1,0 +1,3 @@
+node_modules/
+backend/.env.local
+backend/convex/_generated/
